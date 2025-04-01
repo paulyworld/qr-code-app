@@ -1,4 +1,4 @@
-// QRGenerator.js
+// QRGenerator.js (Step 2: Add name input field)
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { QRCodeCanvas } from 'qrcode.react';
@@ -8,7 +8,7 @@ import ColorPicker from './ColorPicker';
 import { API_URL } from '../config';
 
 const QRGenerator = ({ isAuthenticated }) => {
-  // Basic QR code settings
+  const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const [qrColor, setQrColor] = useState('#000000');
   const [bgColor, setBgColor] = useState('#ffffff');
@@ -18,20 +18,13 @@ const QRGenerator = ({ isAuthenticated }) => {
   const [logoPreview, setLogoPreview] = useState(null);
   const [qrStyle, setQrStyle] = useState('dots');
   const [cornerStyle, setCornerStyle] = useState('square');
-  
-  // UI state
+
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  
-  // Tracking-related state
   const [trackingUrl, setTrackingUrl] = useState('');
   const [qrCodeGenerated, setQrCodeGenerated] = useState(false);
-  
+
   const navigate = useNavigate();
-  
-  // Base URL for tracking
-  //const baseUrl = process.env.REACT_APP_BASE_URL || window.location.origin;
-  //const baseUrl = "https://7d61-69-145-61-179.ngrok-free.app";
   const baseUrl = API_URL;
 
   useEffect(() => {
@@ -48,23 +41,21 @@ const QRGenerator = ({ isAuthenticated }) => {
 
   const handleUrlChange = (e) => {
     setUrl(e.target.value);
-    // Reset generated state if URL changes
     if (qrCodeGenerated) {
       setQrCodeGenerated(false);
+      setTrackingUrl('');
     }
   };
 
   const validateUrl = (url) => {
-    // If the URL doesn't start with http:// or https://, add https://
     let processedUrl = url;
     if (!/^https?:\/\//i.test(processedUrl)) {
       processedUrl = 'https://' + processedUrl;
     }
-    
     try {
       new URL(processedUrl);
       return { valid: true, url: processedUrl };
-    } catch (error) {
+    } catch {
       return { valid: false, url: processedUrl };
     }
   };
@@ -84,56 +75,33 @@ const QRGenerator = ({ isAuthenticated }) => {
   };
 
   const generateQRCode = () => {
-    if (!url) {
-      toast.error('Please enter a URL');
-      return;
-    }
-  
-    // Validate the URL and get the processed version
     const validation = validateUrl(url);
-    
     if (!validation.valid) {
-      toast.error('Please enter a valid URL (e.g., example.com or https://example.com)');
+      toast.error('Please enter a valid URL');
       return;
     }
-    
-    // Update the URL if it was modified (e.g., by adding https://)
-    if (validation.url !== url) {
-      setUrl(validation.url);
-    }
-  
-    setIsGenerating(true);
-    
-    // Generate a temporary shortId for preview purposes
+    const processedUrl = validation.url;
     const tempShortId = Math.random().toString(36).substring(2, 8);
-    
-    // Create the tracking URL
-    const newTrackingUrl = `${baseUrl}/q/${tempShortId}`;
-    setTrackingUrl(newTrackingUrl);
-    
+    const previewTrackingUrl = `${baseUrl}/q/${tempShortId}`;
+
+    setUrl(processedUrl);
+    setTrackingUrl(previewTrackingUrl);
+    setIsGenerating(true);
+
     setTimeout(() => {
       setIsGenerating(false);
       setQrCodeGenerated(true);
-      toast.success('QR Code generated successfully!');
-    }, 500);
+      toast.success('Preview generated! Now click Save to finalize your QR code.');
+    }, 300);
   };
 
   const downloadQRCode = () => {
-    if (!url) {
-      toast.error('Please generate a QR code first');
-      return;
-    }
-
     if (!qrCodeGenerated) {
       toast.error('Please generate a QR code first');
       return;
     }
-
     const canvas = document.getElementById('qrcode');
-    const pngUrl = canvas
-      .toDataURL('image/png')
-      .replace('image/png', 'image/octet-stream');
-    
+    const pngUrl = canvas.toDataURL('image/png').replace('image/png', 'image/octet-stream');
     const downloadLink = document.createElement('a');
     downloadLink.href = pngUrl;
     downloadLink.download = 'qrcode.png';
@@ -148,50 +116,50 @@ const QRGenerator = ({ isAuthenticated }) => {
       navigate('/login');
       return;
     }
-
-    if (!url) {
-      toast.error('Please generate a QR code first');
+    const validation = validateUrl(url);
+    if (!validation.valid) {
+      toast.error('Please enter a valid URL');
+      return;
+    }
+    if (!name.trim()) {
+      toast.error('Please enter a name for your QR code');
       return;
     }
 
-    if (!qrCodeGenerated) {
-      toast.error('Please generate a QR code first');
-      return;
-    }
+    const canvas = document.getElementById('qrcode');
+    const qrImageData = canvas.toDataURL('image/png');
+
+    const qrData = {
+      name,
+      url,
+      qrImageData,
+      settings: {
+        qrColor,
+        bgColor,
+        size,
+        includeMargin,
+        qrStyle,
+        cornerStyle,
+        hasLogo: !!logoFile
+      }
+    };
 
     setIsSaving(true);
     try {
-      // Re-render the QR code with the current tracking URL to ensure it's captured in the image
-      const canvas = document.getElementById('qrcode');
-      const qrImageData = canvas.toDataURL('image/png');
-      
-      const qrData = {
-        name: url.replace(/^https?:\/\//, '').split('/')[0],
-        url,
-        qrImageData,
-        settings: {
-          qrColor,
-          bgColor,
-          size,
-          includeMargin,
-          qrStyle,
-          cornerStyle,
-          hasLogo: !!logoFile
-        }
-      };
-
       const response = await saveQRCode(qrData);
-      
-      // Update with the actual shortId from the server if available
-      if (response && response.qrCode && response.qrCode.shortId) {
+      if (response?.qrCode?.shortId) {
         const finalTrackingUrl = `${baseUrl}/q/${response.qrCode.shortId}`;
         setTrackingUrl(finalTrackingUrl);
+        setQrCodeGenerated(false);
+        setTimeout(() => {
+          setQrCodeGenerated(true);
+          toast.success('QR Code saved and updated successfully!');
+        }, 100);
+      } else {
+        throw new Error('No shortId returned');
       }
-      
-      toast.success('QR Code saved successfully!');
-      navigate('/my-codes');
-    } catch (error) {
-      console.error('Error saving QR code:', error);
+    } catch (err) {
+      console.error('Save error:', err);
       toast.error('Failed to save QR code. Please try again.');
     } finally {
       setIsSaving(false);
@@ -201,6 +169,20 @@ const QRGenerator = ({ isAuthenticated }) => {
   return (
     <div className="max-w-5xl mx-auto bg-white rounded-lg shadow-md p-6">
       <h1 className="text-2xl font-bold mb-6 text-center">Custom QR Code Generator</h1>
+
+      <div className="mb-4">
+        <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+          QR Code Name
+        </label>
+        <input
+          type="text"
+          id="name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Name your QR code"
+          className="w-full rounded-md border border-gray-300 p-2 focus:ring-indigo-500 focus:border-indigo-500"
+        />
+      </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         <div className="space-y-6">

@@ -268,55 +268,55 @@ app.get('/api/auth/verify', authenticate, (req, res) => {
 // QR Code routes
 app.post('/api/qrcodes', authenticate, async (req, res) => {
   try {
-    console.log('Creating QR code. User ID:', req.user.id);
-    console.log('Request body:', req.body);
-    
     const { name, url, qrImageData, settings } = req.body;
-    
-    console.log('QR Code data received:', { name, url });
-    console.log('User ID:', req.user.id);
-    
-    // Generate a unique short ID
-    let shortId;
-    let isUnique = false;
-    
-    while (!isUnique) {
-      shortId = generateShortId();
-      console.log('Generated shortId:', shortId);
-      const existingQR = await QRCode.findOne({ shortId });
-      if (!existingQR) {
-        isUnique = true;
-      }
+    const userId = req.user.id;
+
+    if (!name || !url || !qrImageData) {
+      return res.status(400).json({ message: 'Missing required fields' });
     }
-    
-    console.log('Creating new QR code with shortId:', shortId);
-    
-    const newQRCode = new QRCode({
-      user: req.user.id,
-      name,
-      url,
-      shortId,
-      qrImageData,
-      settings
-    });
-    
-    console.log('Saving QR code to database...');
-    await newQRCode.save();
-    console.log('QR code saved successfully!');
-    
-    // Return the shortId and tracking URL in the response
-    res.status(201).json({
+
+    // Check if user already has a QR code with this name
+    let qrCode = await QRCode.findOne({ user: userId, name });
+
+    if (qrCode) {
+      // Overwrite existing
+      qrCode.url = url;
+      qrCode.qrImageData = qrImageData;
+      qrCode.settings = settings;
+      await qrCode.save();
+    } else {
+      // Create new with a unique shortId
+      let shortId;
+      let isUnique = false;
+
+      while (!isUnique) {
+        shortId = generateShortId();
+        const existingQR = await QRCode.findOne({ shortId });
+        if (!existingQR) isUnique = true;
+      }
+
+      qrCode = new QRCode({
+        user: userId,
+        name,
+        url,
+        shortId,
+        qrImageData,
+        settings
+      });
+      await qrCode.save();
+    }
+
+    res.status(200).json({
       message: 'QR Code saved successfully',
       qrCode: {
-        id: newQRCode._id,
-        name: newQRCode.name,
-        url: newQRCode.url,
-        shortId: newQRCode.shortId,
-        createdAt: newQRCode.createdAt,
-        trackingUrl: `${req.protocol}://${req.get('host')}/q/${newQRCode.shortId}`
+        id: qrCode._id,
+        name: qrCode.name,
+        url: qrCode.url,
+        shortId: qrCode.shortId,
+        createdAt: qrCode.createdAt,
+        trackingUrl: `${req.protocol}://${req.get('host')}/q/${qrCode.shortId}`
       }
     });
-    console.log('Created new QR code with ID:', newQRCode._id);
   } catch (error) {
     console.error('QR Code creation error:', error);
     res.status(500).json({ message: 'Server error' });
