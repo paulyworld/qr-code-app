@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
 
+delete mongoose.connection.models['ScanLog']; // ← this is key
+
 const scanLogSchema = new mongoose.Schema({
   qrCode: { type: mongoose.Schema.Types.ObjectId, ref: 'QRCode', required: true },
   timestamp: { type: Date, default: Date.now },
@@ -12,12 +14,15 @@ const scanLogSchema = new mongoose.Schema({
     longitude: Number
   },
   device: {
-    type: String,
-    browser: String,
-    os: String,
-    isMobile: Boolean,
-    isTablet: Boolean,
-    isDesktop: Boolean
+    type: new mongoose.Schema({
+      type: String,
+      browser: String,
+      os: String,
+      isMobile: Boolean,
+      isTablet: Boolean,
+      isDesktop: Boolean
+    }, { _id: false }),
+    default: {}
   },
   referrer: String
 });

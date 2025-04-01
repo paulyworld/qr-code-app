@@ -19,7 +19,7 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: [process.env.FRONTEND_URL || 'http://localhost:3000', 'https://7d61-69-145-61-179.ngrok-free.app'],
   credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));
@@ -78,12 +78,15 @@ const scanLogSchema = new mongoose.Schema({
     longitude: Number
   },
   device: {
-    type: String,
-    browser: String,
-    os: String,
-    isMobile: Boolean,
-    isTablet: Boolean,
-    isDesktop: Boolean
+    type: new mongoose.Schema({
+      type: String,
+      browser: String,
+      os: String,
+      isMobile: Boolean,
+      isTablet: Boolean,
+      isDesktop: Boolean
+    }, { _id: false }),
+    default: {}
   },
   referrer: String
 });
@@ -136,40 +139,54 @@ const generateShortId = (length = 6) => {
 // Auth routes
 app.post('/api/auth/register', async (req, res) => {
   try {
+    console.log('Received registration request:', {
+      username: req.body.username,
+      email: req.body.email
+    });
+    
     const { username, email, password } = req.body;
     
     // Validate input
     if (!username || !email || !password) {
+      console.log('Registration failed: Missing required fields');
       return res.status(400).json({ message: 'All fields are required' });
     }
     
     // Check if user already exists
+    console.log('Checking for existing user...');
     const existingUser = await User.findOne({ $or: [{ email }, { username }] });
     if (existingUser) {
+      console.log('Registration failed: User already exists');
       return res.status(400).json({ message: 'User already exists' });
     }
     
     // Hash password
+    console.log('Hashing password...');
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
     
     // Create user
+    console.log('Creating new user...');
     const newUser = new User({
       username,
       email,
       password: hashedPassword
     });
     
-    await newUser.save();
+    console.log('Saving user to database...');
+    const savedUser = await newUser.save();
+    console.log('User saved successfully with ID:', savedUser._id);
     
     // Generate JWT
+    console.log('Generating JWT token...');
     const token = jwt.sign(
-      { userId: newUser._id },
+      { userId: savedUser._id },
       process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: '7d' }
     );
     
     // Set cookie
+    console.log('Setting token cookie...');
     res.cookie('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -179,14 +196,14 @@ app.post('/api/auth/register', async (req, res) => {
     res.status(201).json({
       message: 'User registered successfully',
       user: {
-        id: newUser._id,
-        username: newUser.username,
-        email: newUser.email
+        id: savedUser._id,
+        username: savedUser.username,
+        email: savedUser.email
       }
     });
   } catch (error) {
     console.error('Registration error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Server error', error: error.toString() });
   }
 });
 
@@ -251,7 +268,13 @@ app.get('/api/auth/verify', authenticate, (req, res) => {
 // QR Code routes
 app.post('/api/qrcodes', authenticate, async (req, res) => {
   try {
+    console.log('Creating QR code. User ID:', req.user.id);
+    console.log('Request body:', req.body);
+    
     const { name, url, qrImageData, settings } = req.body;
+    
+    console.log('QR Code data received:', { name, url });
+    console.log('User ID:', req.user.id);
     
     // Generate a unique short ID
     let shortId;
@@ -259,11 +282,14 @@ app.post('/api/qrcodes', authenticate, async (req, res) => {
     
     while (!isUnique) {
       shortId = generateShortId();
+      console.log('Generated shortId:', shortId);
       const existingQR = await QRCode.findOne({ shortId });
       if (!existingQR) {
         isUnique = true;
       }
     }
+    
+    console.log('Creating new QR code with shortId:', shortId);
     
     const newQRCode = new QRCode({
       user: req.user.id,
@@ -274,8 +300,11 @@ app.post('/api/qrcodes', authenticate, async (req, res) => {
       settings
     });
     
+    console.log('Saving QR code to database...');
     await newQRCode.save();
+    console.log('QR code saved successfully!');
     
+    // Return the shortId and tracking URL in the response
     res.status(201).json({
       message: 'QR Code saved successfully',
       qrCode: {
@@ -283,12 +312,188 @@ app.post('/api/qrcodes', authenticate, async (req, res) => {
         name: newQRCode.name,
         url: newQRCode.url,
         shortId: newQRCode.shortId,
-        createdAt: newQRCode.createdAt
+        createdAt: newQRCode.createdAt,
+        trackingUrl: `${req.protocol}://${req.get('host')}/q/${newQRCode.shortId}`
       }
     });
+    console.log('Created new QR code with ID:', newQRCode._id);
   } catch (error) {
     console.error('QR Code creation error:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Add a test QR code redirect route
+app.get('/api/test-redirect', async (req, res) => {
+  try {
+    console.log('Testing redirect endpoint...');
+    
+    // Find any QR code in the database
+    const testQRCode = await QRCode.findOne();
+    
+    if (!testQRCode) {
+      return res.status(404).json({ message: 'No QR codes found in database' });
+    }
+    
+    console.log('Found QR code with shortId:', testQRCode.shortId);
+    console.log('Destination URL:', testQRCode.url);
+    
+    // Use ngrok URL explicitly
+    const ngrokUrl = "https://7d61-69-145-61-179.ngrok-free.app";
+    const trackingUrl = `${ngrokUrl}/q/${testQRCode.shortId}`;
+    
+    res.json({
+      success: true,
+      message: 'Test redirect URL created',
+      shortId: testQRCode.shortId,
+      trackingUrl: trackingUrl,
+      destinationUrl: testQRCode.url,
+      testLink: `<a href="${trackingUrl}" target="_blank">Click to test redirect</a>`
+    });
+  } catch (error) {
+    console.error('Test redirect error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Test redirect failed',
+      error: error.message
+    });
+  }
+});
+
+// Add a database test route
+app.get('/api/test-database', async (req, res) => {
+  try {
+    // Create a simple test collection
+    const TestCollection = mongoose.model('TestCollection', new mongoose.Schema({
+      name: String,
+      createdAt: { type: Date, default: Date.now }
+    }), 'testcollection');
+    
+    // Create a document
+    const testDoc = new TestCollection({ name: 'test-document' });
+    await testDoc.save();
+    
+    // Retrieve it
+    const retrievedDoc = await TestCollection.findById(testDoc._id);
+    
+    // Delete it to clean up
+    await TestCollection.deleteOne({ _id: testDoc._id });
+    
+    res.json({
+      success: true,
+      message: 'Database connection and operations working correctly!',
+      document: retrievedDoc
+    });
+  } catch (error) {
+    console.error('Database test error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Database test failed',
+      error: error.message
+    });
+  }
+});
+
+//Test endpoint for mongoDB connection
+app.get('/api/test-db', async (req, res) => {
+  try {
+    // Try to perform a simple MongoDB operation
+    const count = await User.countDocuments();
+    res.json({ message: 'Database connection successful', count });
+  } catch (error) {
+    console.error('Database connection error:', error);
+    res.status(500).json({ message: 'Database connection failed', error: error.message });
+  }
+});
+
+// FOR TESTING ONLY - Remove in production
+app.get('/api/test-qrcode', async (req, res) => {
+  try {
+    // First find a valid user from the database
+    const testUser = await User.findOne();
+    
+    if (!testUser) {
+      return res.status(404).json({ message: 'No users found in database. Please create a user first.' });
+    }
+    
+    const shortId = generateShortId();
+    const testQRCode = new QRCode({
+      user: testUser._id, // Use a real ObjectId from an existing user
+      name: "Test QR Code",
+      url: "https://example.com",
+      shortId,
+      qrImageData: "data:image/png;base64,test", // Just a placeholder
+      settings: {
+        qrColor: "#000000",
+        bgColor: "#FFFFFF",
+        size: 256,
+        includeMargin: true,
+        qrStyle: "dots",
+        cornerStyle: "square",
+        hasLogo: false
+      }
+    });
+    
+    await testQRCode.save();
+    
+    res.json({
+      message: 'Test QR Code created successfully',
+      shortId,
+      trackingUrl: `${req.protocol}://${req.get('host')}/q/${shortId}`
+    });
+  } catch (error) {
+    console.error('Test QR Code creation error:', error);
+    res.status(500).json({ message: 'Error creating test QR code', error: error.message });
+  }
+});
+
+// QR Code redirection and tracking endpoint
+app.get('/q/:shortId', async (req, res) => {
+  try {
+    const { shortId } = req.params;
+    
+    const qrCode = await QRCode.findOne({ shortId });
+    
+    if (!qrCode) {
+      return res.status(404).send('QR Code not found');
+    }
+    
+    // Update scan count
+    qrCode.scans += 1;
+    await qrCode.save();
+    
+    // Log scan data
+    const ipAddress = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    const geo = geoip.lookup(ipAddress);
+    
+    const scanLog = new ScanLog({
+      qrCode: qrCode._id,
+      ipAddress,
+      location: geo && geo.ll ? {
+        country: geo.country,
+        region: geo.region,
+        city: geo.city,
+        latitude: geo.ll[0],
+        longitude: geo.ll[1]
+      } : null,
+      device: {
+        type: req.useragent.platform,
+        browser: req.useragent.browser,
+        os: req.useragent.os,
+        isMobile: req.useragent.isMobile,
+        isTablet: req.useragent.isTablet,
+        isDesktop: req.useragent.isDesktop
+      },
+      referrer: req.headers.referer || ''
+    });
+    
+    await scanLog.save();
+    
+    // Redirect to the target URL
+    res.redirect(qrCode.url);
+  } catch (error) {
+    console.error('QR Code redirection error:', error);
+    res.status(500).send('Server error');
   }
 });
 

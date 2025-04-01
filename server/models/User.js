@@ -1,6 +1,13 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
+console.log('Initializing User model with schema:', {
+  username: 'String, required, unique',
+  email: 'String, required, unique',
+  password: 'String, required',
+  createdAt: 'Date, default: now'
+});
+
 const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
   email: { type: String, required: true, unique: true },

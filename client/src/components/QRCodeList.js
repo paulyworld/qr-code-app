@@ -1,3 +1,4 @@
+// QRCodeList.js
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
@@ -95,16 +96,27 @@ const QRCodeList = () => {
                     <div className="font-medium">{qrCode.name}</div>
                   </td>
                   <td className="py-3 px-4 border-b">
-                    <a
-                      href={qrCode.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline truncate block max-w-xs"
-                    >
-                      {qrCode.url}
-                    </a>
-                    <div className="text-xs text-gray-500">
-                      Short URL: {window.location.origin}/q/{qrCode.shortId}
+                    <div className="mb-1">
+                      <span className="text-xs font-semibold text-gray-600">Target URL:</span>
+                      <a
+                        href={qrCode.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline truncate block max-w-xs"
+                      >
+                        {qrCode.url}
+                      </a>
+                    </div>
+                    <div>
+                      <span className="text-xs font-semibold text-gray-600">Tracking URL:</span>
+                      <a
+                        href={`${window.location.origin}/q/${qrCode.shortId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline truncate block max-w-xs"
+                      >
+                        {`${window.location.origin}/q/${qrCode.shortId}`}
+                      </a>
                     </div>
                   </td>
                   <td className="py-3 px-4 border-b text-center">

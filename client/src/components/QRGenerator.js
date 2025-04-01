@@ -1,11 +1,14 @@
-import React, { useState, useRef, useEffect } from 'react';
+// QRGenerator.js
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { QRCodeCanvas } from 'qrcode.react';
 import { toast } from 'react-toastify';
 import { saveQRCode } from '../services/qrCodeService';
 import ColorPicker from './ColorPicker';
+import { API_URL } from '../config';
 
 const QRGenerator = ({ isAuthenticated }) => {
+  // Basic QR code settings
   const [url, setUrl] = useState('');
   const [qrColor, setQrColor] = useState('#000000');
   const [bgColor, setBgColor] = useState('#ffffff');
@@ -15,11 +18,21 @@ const QRGenerator = ({ isAuthenticated }) => {
   const [logoPreview, setLogoPreview] = useState(null);
   const [qrStyle, setQrStyle] = useState('dots');
   const [cornerStyle, setCornerStyle] = useState('square');
+  
+  // UI state
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   
-  const qrRef = useRef(null);
+  // Tracking-related state
+  const [trackingUrl, setTrackingUrl] = useState('');
+  const [qrCodeGenerated, setQrCodeGenerated] = useState(false);
+  
   const navigate = useNavigate();
+  
+  // Base URL for tracking
+  //const baseUrl = process.env.REACT_APP_BASE_URL || window.location.origin;
+  //const baseUrl = "https://7d61-69-145-61-179.ngrok-free.app";
+  const baseUrl = API_URL;
 
   useEffect(() => {
     if (logoFile) {
@@ -35,14 +48,24 @@ const QRGenerator = ({ isAuthenticated }) => {
 
   const handleUrlChange = (e) => {
     setUrl(e.target.value);
+    // Reset generated state if URL changes
+    if (qrCodeGenerated) {
+      setQrCodeGenerated(false);
+    }
   };
 
   const validateUrl = (url) => {
+    // If the URL doesn't start with http:// or https://, add https://
+    let processedUrl = url;
+    if (!/^https?:\/\//i.test(processedUrl)) {
+      processedUrl = 'https://' + processedUrl;
+    }
+    
     try {
-      new URL(url);
-      return true;
+      new URL(processedUrl);
+      return { valid: true, url: processedUrl };
     } catch (error) {
-      return false;
+      return { valid: false, url: processedUrl };
     }
   };
 
@@ -65,22 +88,43 @@ const QRGenerator = ({ isAuthenticated }) => {
       toast.error('Please enter a URL');
       return;
     }
-
-    if (!validateUrl(url)) {
-      toast.error('Please enter a valid URL');
+  
+    // Validate the URL and get the processed version
+    const validation = validateUrl(url);
+    
+    if (!validation.valid) {
+      toast.error('Please enter a valid URL (e.g., example.com or https://example.com)');
       return;
     }
-
+    
+    // Update the URL if it was modified (e.g., by adding https://)
+    if (validation.url !== url) {
+      setUrl(validation.url);
+    }
+  
     setIsGenerating(true);
-    // In a real app, you might want to do more validation or processing here
+    
+    // Generate a temporary shortId for preview purposes
+    const tempShortId = Math.random().toString(36).substring(2, 8);
+    
+    // Create the tracking URL
+    const newTrackingUrl = `${baseUrl}/q/${tempShortId}`;
+    setTrackingUrl(newTrackingUrl);
+    
     setTimeout(() => {
       setIsGenerating(false);
+      setQrCodeGenerated(true);
       toast.success('QR Code generated successfully!');
     }, 500);
   };
 
   const downloadQRCode = () => {
     if (!url) {
+      toast.error('Please generate a QR code first');
+      return;
+    }
+
+    if (!qrCodeGenerated) {
       toast.error('Please generate a QR code first');
       return;
     }
@@ -110,8 +154,14 @@ const QRGenerator = ({ isAuthenticated }) => {
       return;
     }
 
+    if (!qrCodeGenerated) {
+      toast.error('Please generate a QR code first');
+      return;
+    }
+
     setIsSaving(true);
     try {
+      // Re-render the QR code with the current tracking URL to ensure it's captured in the image
       const canvas = document.getElementById('qrcode');
       const qrImageData = canvas.toDataURL('image/png');
       
@@ -130,7 +180,14 @@ const QRGenerator = ({ isAuthenticated }) => {
         }
       };
 
-      await saveQRCode(qrData);
+      const response = await saveQRCode(qrData);
+      
+      // Update with the actual shortId from the server if available
+      if (response && response.qrCode && response.qrCode.shortId) {
+        const finalTrackingUrl = `${baseUrl}/q/${response.qrCode.shortId}`;
+        setTrackingUrl(finalTrackingUrl);
+      }
+      
       toast.success('QR Code saved successfully!');
       navigate('/my-codes');
     } catch (error) {
@@ -294,13 +351,12 @@ const QRGenerator = ({ isAuthenticated }) => {
             <div className="relative">
               <QRCodeCanvas
                 id="qrcode"
-                value={url || "https://example.com"}
+                value={qrCodeGenerated ? trackingUrl : (url || "https://example.com")}
                 size={size}
                 fgColor={qrColor}
                 bgColor={bgColor}
                 level="H" // Higher error correction when using a logo
                 includeMargin={includeMargin}
-                //renderAs="canvas" -removed since we changed to QRCodeCanvas
                 imageSettings={
                   logoPreview
                     ? {
@@ -317,16 +373,26 @@ const QRGenerator = ({ isAuthenticated }) => {
             </div>
           </div>
           
+          {qrCodeGenerated && (
+            <div className="mt-4 mb-4 p-3 bg-gray-100 rounded-md w-full">
+              <p className="text-sm font-medium text-gray-700">QR Code Tracking URL:</p>
+              <p className="text-sm break-all font-mono">{trackingUrl}</p>
+              <p className="text-sm text-gray-500 mt-1">This URL will track scans and redirect to:</p>
+              <p className="text-sm break-all font-mono text-blue-600">{url}</p>
+            </div>
+          )}
+          
           <div className="flex space-x-4">
             <button
               onClick={downloadQRCode}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              disabled={!qrCodeGenerated}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-300"
             >
               Download
             </button>
             <button
               onClick={saveQR}
-              disabled={isSaving}
+              disabled={isSaving || !qrCodeGenerated}
               className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-green-300"
             >
               {isSaving ? 'Saving...' : 'Save'}
