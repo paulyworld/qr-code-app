@@ -303,6 +303,7 @@ app.post('/api/qrcodes', authenticate, async (req, res) => {
         qrImageData,
         settings
       });
+
       await qrCode.save();
     }
 
@@ -314,9 +315,11 @@ app.post('/api/qrcodes', authenticate, async (req, res) => {
         url: qrCode.url,
         shortId: qrCode.shortId,
         createdAt: qrCode.createdAt,
+        qrImageData: qrCode.qrImageData,
         trackingUrl: `${req.protocol}://${req.get('host')}/q/${qrCode.shortId}`
       }
     });
+
   } catch (error) {
     console.error('QR Code creation error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -500,9 +503,9 @@ app.get('/q/:shortId', async (req, res) => {
 app.get('/api/qrcodes', authenticate, async (req, res) => {
   try {
     const qrCodes = await QRCode.find({ user: req.user.id })
-      .select('name url shortId scans createdAt')
+      .select('name url shortId scans createdAt qrImageData') // ✅ Added this
       .sort({ createdAt: -1 });
-    
+
     res.json({ qrCodes });
   } catch (error) {
     console.error('QR Codes fetch error:', error);

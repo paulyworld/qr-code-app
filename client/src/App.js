@@ -48,6 +48,7 @@ function App() {
             <Route path="/login" element={
               isAuthenticated ? <Navigate to="/" /> : <Login setIsAuthenticated={setIsAuthenticated} />
             } />
+            <Route path="/generate" element={<QRGenerator />} />
             <Route path="/register" element={
               isAuthenticated ? <Navigate to="/" /> : <Register setIsAuthenticated={setIsAuthenticated} />
             } />

@@ -1,6 +1,6 @@
 // QRCodeList.js
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { fetchQRCodes, deleteQRCode } from '../services/qrCodeService';
 
@@ -8,6 +8,11 @@ const QRCodeList = () => {
   const [qrCodes, setQRCodes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const navigate = useNavigate();
+  const [modalImage, setModalImage] = useState(null);
+
+  const openModal = (imageData) => setModalImage(imageData);
+  const closeModal = () => setModalImage(null);
 
   useEffect(() => {
     const loadQRCodes = async () => {
@@ -25,6 +30,14 @@ const QRCodeList = () => {
 
     loadQRCodes();
   }, []);
+
+  useEffect(() => {
+    if (qrCodes.length > 0) {
+      qrCodes.forEach((qr) => {
+        console.log('QR Image Data for:', qr.name, qr.qrImageData);
+      });
+    }
+  }, [qrCodes]);
 
   const handleDeleteClick = (id) => {
     setConfirmDelete(id);
@@ -47,6 +60,19 @@ const QRCodeList = () => {
     setConfirmDelete(null);
   };
 
+  const downloadImage = (dataUrl, name) => {
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = `${name || 'qrcode'}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleEdit = (qrCode) => {
+    navigate('/generate', { state: { qrCode } });
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -54,7 +80,7 @@ const QRCodeList = () => {
       </div>
     );
   }
-
+  
   return (
     <div className="max-w-6xl mx-auto bg-white rounded-lg shadow-md p-6">
       <div className="flex justify-between items-center mb-6">
@@ -126,19 +152,45 @@ const QRCodeList = () => {
                     {new Date(qrCode.createdAt).toLocaleDateString()}
                   </td>
                   <td className="py-3 px-4 border-b">
-                    <div className="flex justify-center space-x-2">
-                      <Link
-                        to={`/analytics/${qrCode._id}`}
-                        className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
-                      >
-                        Analytics
-                      </Link>
+                    <div className="flex flex-col space-y-2 items-center">
+                    {console.log('Rendering QR image:', qrCode.name, qrCode.qrImageData?.substring(0, 30))}
+                    {qrCode.qrImageData ? (
+                        <img
+                          src={qrCode.qrImageData}
+                          alt={`QR for ${qrCode.name}`}
+                          className="w-24 h-24 object-contain border rounded cursor-pointer"
+                          onClick={() => openModal(qrCode.qrImageData)}
+                        />
+                      ) : (
+                        <p className="text-sm text-gray-400">No preview</p>
+                      )}
+                      <div className="flex flex-wrap justify-center gap-2 mt-2">
                       <button
-                        onClick={() => handleDeleteClick(qrCode._id)}
-                        className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
-                      >
-                        Delete
-                      </button>
+                          onClick={() => downloadImage(qrCode.qrImageData, `${qrCode.name || 'qr-code'}.png`)}
+                          className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
+                          disabled={!qrCode.qrImageData}
+                        >
+                          Download
+                        </button>
+                        <button
+                          onClick={() => handleEdit(qrCode)}
+                          className="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-sm"
+                        >
+                          Edit
+                        </button>
+                        <Link
+                          to={`/analytics/${qrCode._id}`}
+                          className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
+                        >
+                          Analytics
+                        </Link>
+                        <button
+                          onClick={() => handleDeleteClick(qrCode._id)}
+                          className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -170,6 +222,20 @@ const QRCodeList = () => {
                 Delete
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {modalImage && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-4 rounded shadow-lg relative max-w-sm w-full">
+            <button
+              className="absolute top-2 right-2 text-gray-600 hover:text-black"
+              onClick={closeModal}
+            >
+              &times;
+            </button>
+            <img src={modalImage} alt="Full QR Code" className="w-full object-contain" />
           </div>
         </div>
       )}
